@@ -38,14 +38,17 @@ import (
 
 // Plugin info
 const (
+	PluginRequiredApiVersion = "1.0.0"
+	PluginVersion = "0.0.1"
 	PluginID          uint32 = 2
 	PluginName               = "cloudtrail"
-	PluginFilterName         = "ct"
+	PluginEventSource        = "aws_cloudtrail"
 	PluginDescription        = "reads cloudtrail JSON data saved to file in the directory specified in the settings"
+	PluginContact            = "github.com/leogr/plugins/"
 )
 
 const s3DownloadConcurrency = 64
-const verbose bool = false
+const verbose bool = true
 const outBufSize uint32 = 65535
 
 func min(a, b int) int {
@@ -162,14 +165,14 @@ func plugin_get_name() *C.char {
 	return C.CString(PluginName)
 }
 
-//export plugin_get_filter_name
-func plugin_get_filter_name() *C.char {
-	return C.CString(PluginFilterName)
-}
-
 //export plugin_get_required_api_version
 func plugin_get_required_api_version() *C.char {
-	return C.CString("1.0.0")
+	return C.CString(PluginRequiredApiVersion)
+}
+
+//export plugin_get_version
+func plugin_get_version() *C.char {
+	return C.CString(PluginVersion)
 }
 
 //export plugin_get_description
@@ -177,7 +180,17 @@ func plugin_get_description() *C.char {
 	return C.CString(PluginDescription)
 }
 
-// Filed identifiers
+//export plugin_get_contact
+func plugin_get_contact() *C.char {
+	return C.CString(PluginContact)
+}
+
+//export plugin_get_event_source
+func plugin_get_event_source() *C.char {
+	return C.CString(PluginEventSource)
+}
+
+// XXX/mstemm remove ids once decision is final
 const (
 	FieldIDCtID = iota
 	FieldIDCtTime
@@ -628,7 +641,7 @@ func getEvtInfo(jdata *fastjson.Value) string {
 	var info string
 	var separator string
 
-	present, evtname = getfieldStr(jdata, FieldIDCtName)
+	present, evtname = getfieldStr(jdata, "ct.name")
 	if !present {
 		return "<invalid cloudtrail event: eventName field missing>"
 	}
@@ -649,31 +662,31 @@ func getEvtInfo(jdata *fastjson.Value) string {
 	default:
 	}
 
-	present, u64val := getfieldU64(jdata, FieldIDS3Bytes)
+	present, u64val := getfieldU64(jdata, "s3.bytes")
 	if present {
 		info = fmt.Sprintf("Size=%v", u64val)
 		separator = " "
 	}
 
-	present, val := getfieldStr(jdata, FieldIDS3Uri)
+	present, val := getfieldStr(jdata, "s3.uri")
 	if present {
 		info += fmt.Sprintf("%sURI=%s", separator, val)
 		return info
 	}
 
-	present, val = getfieldStr(jdata, FieldIDS3Bucket)
+	present, val = getfieldStr(jdata, "s3.bucket")
 	if present {
 		info += fmt.Sprintf("%sBucket=%s", separator, val)
 		return info
 	}
 
-	present, val = getfieldStr(jdata, FieldIDS3Key)
+	present, val = getfieldStr(jdata, "s3.key")
 	if present {
 		info += fmt.Sprintf("%sKey=%s", separator, val)
 		return info
 	}
 
-	present, val = getfieldStr(jdata, FieldIDS3Host)
+	present, val = getfieldStr(jdata, "s3.host")
 	if present {
 		info += fmt.Sprintf("%sHost=%s", separator, val)
 		return info
@@ -682,15 +695,15 @@ func getEvtInfo(jdata *fastjson.Value) string {
 	return info
 }
 
-func getfieldStr(jdata *fastjson.Value, id uint32) (bool, string) {
+func getfieldStr(jdata *fastjson.Value, field string) (bool, string) {
 	var res string
 
-	switch id {
-	case FieldIDCtID:
+	switch field {
+	case "ct.id":
 		res = string(jdata.GetStringBytes("eventID"))
-	case FieldIDCtTime:
+	case "ct.time":
 		res = string(jdata.GetStringBytes("eventTime"))
-	case FieldIDCtSrc:
+	case "ct.src":
 		res = string(jdata.GetStringBytes("eventSource"))
 
 		if len(res) > len(".amazonaws.com") {
@@ -699,19 +712,19 @@ func getfieldStr(jdata *fastjson.Value, id uint32) (bool, string) {
 				res = res[0 : len(res)-len(".amazonaws.com")]
 			}
 		}
-	case FieldIDCtName:
+	case "ct.name":
 		res = string(jdata.GetStringBytes("eventName"))
-	case FieldIDCtUser:
+	case "ct.user":
 		res = getUser(jdata)
-	case FieldIDCtRegion:
+	case "ct.region":
 		res = string(jdata.GetStringBytes("awsRegion"))
-	case FieldIDCtSrcIP:
+	case "ct.srcip":
 		res = string(jdata.GetStringBytes("sourceIPAddress"))
-	case FieldIDCtUserAgent:
+	case "ct.useragent":
 		res = string(jdata.GetStringBytes("userAgent"))
-	case FieldIDCtInfo:
+	case "ct.info":
 		res = getEvtInfo(jdata)
-	case FieldIDCtReadOnly:
+	case "ct.readonly":
 		ro := jdata.GetBool("readOnly")
 		if ro {
 			res = "true"
@@ -744,25 +757,25 @@ func getfieldStr(jdata *fastjson.Value, id uint32) (bool, string) {
 				res = "false"
 			}
 		}
-	case FieldIDS3Bucket:
+	case "s3.bucket":
 		val := jdata.GetStringBytes("requestParameters", "bucketName")
 		if val == nil {
 			return false, ""
 		}
 		res = string(val)
-	case FieldIDS3Key:
+	case "s3.key":
 		val := jdata.GetStringBytes("requestParameters", "key")
 		if val == nil {
 			return false, ""
 		}
 		res = string(val)
-	case FieldIDS3Host:
+	case "s3.host":
 		val := jdata.GetStringBytes("requestParameters", "Host")
 		if val == nil {
 			return false, ""
 		}
 		res = string(val)
-	case FieldIDS3Uri:
+	case "s3.uri":
 		sbucket := jdata.GetStringBytes("requestParameters", "bucketName")
 		if sbucket == nil {
 			return false, ""
@@ -772,7 +785,7 @@ func getfieldStr(jdata *fastjson.Value, id uint32) (bool, string) {
 			return false, ""
 		}
 		res = fmt.Sprintf("s3://%s/%s", sbucket, skey)
-	case FieldIDEc2Name:
+	case "ec2.name":
 		var iname string = ""
 		jilist := jdata.GetArray("requestParameters", "tagSpecificationSet", "items")
 		if jilist == nil {
@@ -803,9 +816,9 @@ func getfieldStr(jdata *fastjson.Value, id uint32) (bool, string) {
 	return true, res
 }
 
-func getfieldU64(jdata *fastjson.Value, id uint32) (bool, uint64) {
-	switch id {
-	case FieldIDS3Bytes:
+func getfieldU64(jdata *fastjson.Value, field string) (bool, uint64) {
+	switch field {
+	case "s3.bytes":
 		var tot uint64 = 0
 		in := jdata.Get("additionalEventData", "bytesTransferredIn")
 		if in != nil {
@@ -816,31 +829,31 @@ func getfieldU64(jdata *fastjson.Value, id uint32) (bool, uint64) {
 			tot = tot + out.GetUint64()
 		}
 		return (in != nil || out != nil), tot
-	case FieldIDS3BytesIn:
+	case "s3.bytes.in":
 		var tot uint64 = 0
 		in := jdata.Get("additionalEventData", "bytesTransferredIn")
 		if in != nil {
 			tot = tot + in.GetUint64()
 		}
 		return (in != nil), tot
-	case FieldIDS3BytesOut:
+	case "s3.bytes.out":
 		var tot uint64 = 0
 		out := jdata.Get("additionalEventData", "bytesTransferredOut")
 		if out != nil {
 			tot = tot + out.GetUint64()
 		}
 		return (out != nil), tot
-	case FieldIDS3CntGet:
+	case "s3.cnt.get":
 		if string(jdata.GetStringBytes("eventName")) == "GetObject" {
 			return true, 1
 		}
 		return false, 0
-	case FieldIDS3CntPut:
+	case "s3.cnt.put":
 		if string(jdata.GetStringBytes("eventName")) == "PutObject" {
 			return true, 1
 		}
 		return false, 0
-	case FieldIDS3CntOther:
+	case "s3.cnt.other":
 		ename := string(jdata.GetStringBytes("eventName"))
 		if ename == "GetObject" || ename == "PutObject" {
 			return true, 1
@@ -898,7 +911,7 @@ func plugin_event_to_string(plgState unsafe.Pointer, data *C.char, datalen uint3
 }
 
 //export plugin_extract_str
-func plugin_extract_str(plgState unsafe.Pointer, evtnum uint64, id uint32, arg *byte, data *byte, datalen uint32) *byte {
+func plugin_extract_str(plgState unsafe.Pointer, evtnum uint64, field *byte, arg *byte, data *byte, datalen uint32) *byte {
 	var res string
 	var err error
 	pCtx := (*pluginContext)(sinsp.Context(plgState))
@@ -916,7 +929,9 @@ func plugin_extract_str(plgState unsafe.Pointer, evtnum uint64, id uint32, arg *
 		pCtx.jdataEvtnum = evtnum
 	}
 
-	present, val := getfieldStr(pCtx.jdata, id)
+	field_str := C.GoString((*C.char)(unsafe.Pointer(field)))
+
+	present, val := getfieldStr(pCtx.jdata, field_str)
 	if !present {
 		return nil
 	}
@@ -932,7 +947,7 @@ func plugin_extract_str(plgState unsafe.Pointer, evtnum uint64, id uint32, arg *
 }
 
 //export plugin_extract_u64
-func plugin_extract_u64(plgState unsafe.Pointer, evtnum uint64, id uint32, arg *byte, data *byte, datalen uint32, fieldPresent *uint32) uint64 {
+func plugin_extract_u64(plgState unsafe.Pointer, evtnum uint64, field *byte, arg *byte, data *byte, datalen uint32, fieldPresent *uint32) uint64 {
 	var err error
 	*fieldPresent = 0
 	pCtx := (*pluginContext)(sinsp.Context(plgState))
@@ -949,7 +964,8 @@ func plugin_extract_u64(plgState unsafe.Pointer, evtnum uint64, id uint32, arg *
 	}
 
 	// loris
-	present, val := getfieldU64(pCtx.jdata, id)
+	field_str := C.GoString((*C.char)(unsafe.Pointer(field)))
+	present, val := getfieldU64(pCtx.jdata, field_str)
 	if present {
 		*fieldPresent = 1
 	} else {

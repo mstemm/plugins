@@ -2,7 +2,7 @@ module example.com/cloudtrail
 
 go 1.15
 
-replace github.com/ldegio/libsinsp-plugin-sdk-go => ../../../../../libsinsp-plugin-sdk-go
+replace github.com/ldegio/libsinsp-plugin-sdk-go => ../../../libsinsp-plugin-sdk-go
 
 require github.com/aws/aws-sdk-go v1.36.23
 
