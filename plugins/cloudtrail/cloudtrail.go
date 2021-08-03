@@ -8,9 +8,11 @@
 
 package main
 
+// #cgo CFLAGS: -I${SRCDIR}/../../../libs/userspace/libscap
 /*
 #include <stdlib.h>
 #include <inttypes.h>
+#include <plugin_info.h>
 */
 import "C"
 import (
@@ -568,7 +570,7 @@ func Next(plgState unsafe.Pointer, openState unsafe.Pointer) (*sinsp.PluginEvent
 // XXX/mstemm can this be the actual right type
 
 //export plugin_next
-func plugin_next(plgState unsafe.Pointer, openState unsafe.Pointer, retEvt *unsafe.Pointer) int32 {
+func plugin_next(plgState unsafe.Pointer, openState unsafe.Pointer, retEvt **C.ss_plugin_event) int32 {
 	evt, res := Next(plgState, openState)
 	if res == sinsp.ScapSuccess {
 		*retEvt = sinsp.Events([]*sinsp.PluginEvent{evt})
