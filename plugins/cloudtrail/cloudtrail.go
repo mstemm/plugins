@@ -542,13 +542,11 @@ func Next(plgState unsafe.Pointer, openState unsafe.Pointer) (*sinsp.PluginEvent
 	return &ret, sinsp.ScapSuccess
 }
 
-// XXX/mstemm can this be the actual right type
-
 //export plugin_next
 func plugin_next(plgState unsafe.Pointer, openState unsafe.Pointer, retEvt **C.ss_plugin_event) int32 {
 	evt, res := Next(plgState, openState)
 	if res == sinsp.ScapSuccess {
-		*retEvt = sinsp.Events([]*sinsp.PluginEvent{evt})
+		*retEvt = (*C.ss_plugin_event)(sinsp.Events([]*sinsp.PluginEvent{evt}))
 	}
 
 	log.Printf("[%s] plugin_next\n", PluginName)
@@ -838,7 +836,7 @@ func plugin_event_to_string(plgState unsafe.Pointer, data *C.char, datalen uint3
 
 	pCtx := (*pluginContext)(sinsp.Context(plgState))
 
-	pCtx.jdata, err = pCtx.jparser.Parse(C.GoString(data))
+	pCtx.jdata, err = pCtx.jparser.Parse(C.GoStringN(data, C.int(datalen)))
 	if err != nil {
 		pCtx.lastError = err
 		line = "<invalid JSON: " + err.Error() + ">"
@@ -871,63 +869,78 @@ func plugin_event_to_string(plgState unsafe.Pointer, data *C.char, datalen uint3
 	return C.CString(line)
 }
 
-//export plugin_extract_str
-func plugin_extract_str(plgState unsafe.Pointer, evtnum uint64, field *byte, arg *byte, data *byte, datalen uint32) *C.char {
-	var res string
+func extract_str(pluginState unsafe.Pointer, evtnum uint64, field string, arg string, data []byte) (bool, string) {
 	var err error
-	pCtx := (*pluginContext)(sinsp.Context(plgState))
+	pCtx := (*pluginContext)(sinsp.Context(pluginState))
 
 	// Decode the json, but only if we haven't done it yet for this event
 	if evtnum != pCtx.jdataEvtnum {
-		pCtx.jdata, err = pCtx.jparser.Parse(C.GoString(
-			(*C.char)(unsafe.Pointer(data)),
-		))
+
+		// For this plugin, events are always strings
+		evtStr := string(data)
+
+		pCtx.jdata, err = pCtx.jparser.Parse(evtStr)
 		if err != nil {
-			// Not a json file. We return nil to indicate that the field is not
-			// present.
-			return nil
+			// Not a json file, so not present.
+			return false, ""
 		}
 		pCtx.jdataEvtnum = evtnum
 	}
 
-	field_str := C.GoString((*C.char)(unsafe.Pointer(field)))
+	return getfieldStr(pCtx.jdata, field)
+}
 
-	present, val := getfieldStr(pCtx.jdata, field_str)
-	if !present {
+//export plugin_extract_str
+func plugin_extract_str(plgState unsafe.Pointer, evtnum uint64, field *C.char, arg *C.char, data *C.uint8_t, datalen uint32) *C.char {
+	fieldStr := C.GoString((*C.char)(unsafe.Pointer(field)))
+	argStr := C.GoString((*C.char)(unsafe.Pointer(arg)))
+	dataBuf := C.GoBytes(unsafe.Pointer(data), C.int(datalen))
+
+	present, extractStr := extract_str(plgState, evtnum, fieldStr, argStr, dataBuf)
+
+	if (!present) {
 		return nil
 	}
 
-	res = val
-
-	return C.CString(res)
+	return C.CString(extractStr)
 }
 
-//export plugin_extract_u64
-func plugin_extract_u64(plgState unsafe.Pointer, evtnum uint64, field *byte, arg *byte, data *byte, datalen uint32, fieldPresent *uint32) uint64 {
+func extract_u64(pluginState unsafe.Pointer, evtnum uint64, field string, arg string, data []byte) (bool, uint64) {
 	var err error
-	*fieldPresent = 0
-	pCtx := (*pluginContext)(sinsp.Context(plgState))
+	pCtx := (*pluginContext)(sinsp.Context(pluginState))
 
 	// Decode the json, but only if we haven't done it yet for this event
 	if evtnum != pCtx.jdataEvtnum {
-		pCtx.jdata, err = pCtx.jparser.Parse(C.GoString((*C.char)(unsafe.Pointer(data))))
+
+		// For this plugin, events are always strings
+		evtStr := string(data)
+
+		pCtx.jdata, err = pCtx.jparser.Parse(evtStr)
 		if err != nil {
-			// Not a json file. We return 0 and *fieldPresent=0 to indicate
-			// that the field is not present.
-			return 0
+			// Not a json file, so not present.
+			return false, 0
 		}
 		pCtx.jdataEvtnum = evtnum
 	}
 
-	// loris
-	field_str := C.GoString((*C.char)(unsafe.Pointer(field)))
-	present, val := getfieldU64(pCtx.jdata, field_str)
-	if present {
-		*fieldPresent = 1
-	} else {
+	return getfieldU64(pCtx.jdata, field)
+}
+
+//export plugin_extract_u64
+func plugin_extract_u64(plgState unsafe.Pointer, evtnum uint64, field *C.char, arg *C.char, data *C.uint8_t, datalen uint32, fieldPresent *uint32) uint64 {
+	fieldStr := C.GoString((*C.char)(unsafe.Pointer(field)))
+	argStr := C.GoString((*C.char)(unsafe.Pointer(arg)))
+	dataBuf := C.GoBytes(unsafe.Pointer(data), C.int(datalen))
+
+	present, extractU64 := extract_u64(plgState, evtnum, fieldStr, argStr, dataBuf)
+
+	if (!present) {
 		*fieldPresent = 0
+		return 0
 	}
-	return val
+
+	*fieldPresent = 1
+	return extractU64
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -936,19 +949,16 @@ func plugin_extract_u64(plgState unsafe.Pointer, evtnum uint64, field *byte, arg
 
 //export plugin_register_async_extractor
 func plugin_register_async_extractor(pluginState unsafe.Pointer, asyncExtractorInfo unsafe.Pointer) int32 {
-	// XXX/mstemm plugin_extract_str can't be used directly as-is, with this compilation error:
-	// ./cloudtrail.go:962:38: cannot use plugin_extract_str (type func(unsafe.Pointer, uint64, *byte, *byte, *byte, uint32) *_Ctype_char) as type sinsp.PluginExtractStrFunc in argument to sinsp.RegisterAsyncExtractors
-	//	return sinsp.RegisterAsyncExtractors(pluginState, asyncExtractorInfo, plugin_extract_str, plugin_extract_u64)
-		return sinsp.RegisterAsyncExtractors(pluginState, asyncExtractorInfo, nil, plugin_extract_u64)
+	return sinsp.RegisterAsyncExtractors(pluginState, asyncExtractorInfo, extract_str, extract_u64)
 }
 
 //export plugin_next_batch
-func plugin_next_batch(plgState unsafe.Pointer, openState unsafe.Pointer, nevts *C.uint, retEvts *unsafe.Pointer) int32 {
+func plugin_next_batch(plgState unsafe.Pointer, openState unsafe.Pointer, nevts *uint32, retEvts **C.ss_plugin_event) int32 {
 	evts, res := sinsp.NextBatch(plgState, openState, Next)
 
 	if res == sinsp.ScapSuccess {
-		*retEvts = sinsp.Events(evts)
-		*nevts = (C.uint)(len(evts))
+		*retEvts = (*C.ss_plugin_event)(sinsp.Events(evts))
+		*nevts = (uint32)(len(evts))
 	}
 
 	log.Printf("[%s] plugin_next_batch\n", PluginName)
