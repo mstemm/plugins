@@ -583,7 +583,7 @@ func getUser(jdata *fastjson.Value) string {
 				return string(jun)
 			}
 		case "AssumedRole":
-			jun := jdata.GetStringBytes("sessionContext", "sessionIssuer", "userName")
+			jun := jdata.GetStringBytes("userIdentity", "sessionContext", "sessionIssuer", "userName")
 			if jun != nil {
 				return string(jun)
 			}
