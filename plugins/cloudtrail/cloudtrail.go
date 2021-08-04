@@ -892,17 +892,7 @@ func extract_str(pluginState unsafe.Pointer, evtnum uint64, field string, arg st
 
 //export plugin_extract_str
 func plugin_extract_str(plgState unsafe.Pointer, evtnum uint64, field *C.char, arg *C.char, data *C.uint8_t, datalen uint32) *C.char {
-	fieldStr := C.GoString((*C.char)(unsafe.Pointer(field)))
-	argStr := C.GoString((*C.char)(unsafe.Pointer(arg)))
-	dataBuf := C.GoBytes(unsafe.Pointer(data), C.int(datalen))
-
-	present, extractStr := extract_str(plgState, evtnum, fieldStr, argStr, dataBuf)
-
-	if (!present) {
-		return nil
-	}
-
-	return C.CString(extractStr)
+	return (*C.char)(sinsp.WrapExtractStr(plgState, evtnum, unsafe.Pointer(field), unsafe.Pointer(arg), unsafe.Pointer(data), datalen, extract_str))
 }
 
 func extract_u64(pluginState unsafe.Pointer, evtnum uint64, field string, arg string, data []byte) (bool, uint64) {
@@ -928,19 +918,7 @@ func extract_u64(pluginState unsafe.Pointer, evtnum uint64, field string, arg st
 
 //export plugin_extract_u64
 func plugin_extract_u64(plgState unsafe.Pointer, evtnum uint64, field *C.char, arg *C.char, data *C.uint8_t, datalen uint32, fieldPresent *uint32) uint64 {
-	fieldStr := C.GoString((*C.char)(unsafe.Pointer(field)))
-	argStr := C.GoString((*C.char)(unsafe.Pointer(arg)))
-	dataBuf := C.GoBytes(unsafe.Pointer(data), C.int(datalen))
-
-	present, extractU64 := extract_u64(plgState, evtnum, fieldStr, argStr, dataBuf)
-
-	if (!present) {
-		*fieldPresent = 0
-		return 0
-	}
-
-	*fieldPresent = 1
-	return extractU64
+	return sinsp.WrapExtractU64(plgState, evtnum, unsafe.Pointer(field), unsafe.Pointer(arg), unsafe.Pointer(data), datalen, fieldPresent, extract_u64)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
