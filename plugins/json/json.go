@@ -127,11 +127,9 @@ func extract_str(pluginState unsafe.Pointer, evtnum uint64, field string, arg st
 	var err error
 	pCtx := (*pluginContext)(sinsp.Context(pluginState))
 
-	log.Printf("FOUR\n")
 	// As a very quick sanity check, only try to extract all if
 	// the first character is '{' or '['
 	if !(data[0] == '{' || data[0] == '[') {
-		log.Printf("FIVE\n")
 		return false, ""
 	}
 
@@ -162,11 +160,9 @@ func extract_str(pluginState unsafe.Pointer, evtnum uint64, field string, arg st
 		}
 		res = string(val)
 	case "json.json":
-		log.Printf("ONE\n")
 		var out bytes.Buffer
 		err = json.Indent(&out, data, "", "  ")
 		if err != nil {
-			log.Printf("TWO\n")
 			return false, ""
 		}
 		res = string(out.Bytes())
@@ -179,7 +175,6 @@ func extract_str(pluginState unsafe.Pointer, evtnum uint64, field string, arg st
 
 //export plugin_extract_str
 func plugin_extract_str(plgState unsafe.Pointer, evtnum uint64, field *C.char, arg *C.char, data *C.uint8_t, datalen uint32) *C.char {
-	log.Printf("TEN\n")
 	return (*C.char)(sinsp.WrapExtractStr(plgState, evtnum, unsafe.Pointer(field), unsafe.Pointer(arg), unsafe.Pointer(data), datalen, extract_str))
 }
 
