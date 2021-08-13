@@ -109,8 +109,10 @@ func plugin_get_contact() *C.char {
 //export plugin_get_fields
 func plugin_get_fields() *C.char {
 	flds := []sinsp.FieldEntry{
-		{Type: "string", Name: "json.value", Desc: "allows to extract a value from a JSON-encoded input. Syntax is json.value[/x/y/z], where x,y and z are levels in the JSON hierarchy."},
-		{Type: "string", Name: "json.json", Desc: "the full json message as a text string."},
+		{Type: "string", Name: "json.value", ArgRequired: true, Desc: "allows to extract a value from a JSON-encoded input. Syntax is jevt.value[/x/y/z], where x,y and z are levels in the JSON hierarchy."},
+		{Type: "string", Name: "json.obj", Desc: "the full json message as a text string."},
+		{Type: "string", Name: "jevt.value", ArgRequired: true, Desc: "alias for json.value, provided for backwards compatibility"},
+		{Type: "string", Name: "jevt.obj", Desc: "alias for json.obj, provided for backwards compatibility"},
 	}
 
 	b, err := json.Marshal(&flds)
@@ -148,7 +150,7 @@ func extract_str(pluginState unsafe.Pointer, evtnum uint64, field string, arg st
 	}
 
 	switch field {
-	case "json.value":
+	case "json.value", "jevt.value":
 		if arg[0] == '/' {
 			arg = arg[1:]
 		}
@@ -159,7 +161,7 @@ func extract_str(pluginState unsafe.Pointer, evtnum uint64, field string, arg st
 			return false, ""
 		}
 		res = string(val)
-	case "json.json":
+	case "json.obj", "jevt.obj":
 		var out bytes.Buffer
 		err = json.Indent(&out, data, "", "  ")
 		if err != nil {
