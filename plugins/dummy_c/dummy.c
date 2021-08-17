@@ -148,26 +148,32 @@ char *plugin_event_to_string(ss_plugin_t *s, const uint8_t *data, uint32_t datal
 {
 	dummy_plugin_state *state = (dummy_plugin_state *) s;
 
-	snprintf(state->buf, sizeof(state->buf)-1, "evt-to-string(len=%d): %s", datalen, (char *) data);
+	snprintf(state->buf, sizeof(state->buf)-1, "evt-to-string(len=%d): %.*s", datalen, datalen, (char *) data);
 
 	return strdup(state->buf);
 }
 
-uint64_t plugin_extract_u64(ss_plugin_t *s, uint64_t evtnum, const char *field, const char *arg, uint8_t *data, uint32_t datalen, uint32_t *field_present)
+int32_t plugin_extract_fields(ss_plugin_t *s, const ss_plugin_event *evt, uint32_t num_fields, ss_plugin_extract_field *fields)
 {
 	size_t prefix_len = strlen(pl_evt_prefix);
 
-	if(strcmp(field, "dummy.count") != 0 ||
-	   strncmp((char *) data, pl_evt_prefix, prefix_len) != 0 ||
-	   datalen - prefix_len <= 0)
+	for(uint32_t i=0; i < num_fields; i++)
 	{
-		*field_present = 0;
-		return 0;
+		ss_plugin_extract_field *field = &(fields[i]);
+
+		if(strcmp(field->field, "dummy.count") != 0 ||
+		   strncmp((char *) evt->data, pl_evt_prefix, prefix_len) != 0 ||
+		   evt->datalen - prefix_len <= 0)
+		{
+			field->field_present = 0;
+		}
+		else
+		{
+			field->res_u64 = strtoull(evt->data + prefix_len, NULL, 10);
+			field->field_present = 1;
+		}
 	}
 
-	uint64_t ret = strtoull(data + prefix_len, NULL, 10);
-	*field_present = 1;
-
-	return ret;
+	return SCAP_SUCCESS;
 
 }

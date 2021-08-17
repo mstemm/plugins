@@ -4,9 +4,11 @@
 ///////////////////////////////////////////////////////////////////////////////
 package main
 
+// #cgo CFLAGS: -I${SRCDIR}/../../../libs/userspace/libscap
 /*
 #include <stdlib.h>
 #include <inttypes.h>
+#include <plugin_info.h>
 */
 import "C"
 import (
@@ -124,7 +126,7 @@ func plugin_get_fields() *C.char {
 	return C.CString(string(b))
 }
 
-func extract_str(pluginState unsafe.Pointer, evtnum uint64, field string, arg string, data []byte) (bool, string) {
+func extract_str(pluginState unsafe.Pointer, evtnum uint64, data []byte, ts uint64, field string, arg string) (bool, string) {
 	var res string
 	var err error
 	pCtx := (*pluginContext)(sinsp.Context(pluginState))
@@ -175,18 +177,15 @@ func extract_str(pluginState unsafe.Pointer, evtnum uint64, field string, arg st
 	return true, res
 }
 
-//export plugin_extract_str
-func plugin_extract_str(plgState unsafe.Pointer, evtnum uint64, field *C.char, arg *C.char, data *C.uint8_t, datalen uint32) *C.char {
-	return (*C.char)(sinsp.WrapExtractStr(plgState, evtnum, unsafe.Pointer(field), unsafe.Pointer(arg), unsafe.Pointer(data), datalen, extract_str))
-}
-
-//export plugin_extract_u64
-func plugin_extract_u64(plgState unsafe.Pointer, evtnum uint64, field *C.char, arg *C.char, data *C.uint8_t, datalen uint32, fieldPresent *uint32) uint64 {
+func extract_u64(pluginState unsafe.Pointer, evtnum uint64, data []byte, ts uint64, field string, arg string) (bool, uint64) {
 	// No numeric fields for this plugin
-	*fieldPresent = 0
-	return 0
+	return false, 0
 }
 
+//export plugin_extract_fields
+func plugin_extract_fields(plgState unsafe.Pointer, evt *C.struct_ss_plugin_event, numFields uint32, fields *C.struct_ss_plugin_extract_field) int32 {
+	return sinsp.WrapExtractFuncs(plgState, unsafe.Pointer(evt), numFields, unsafe.Pointer(fields), extract_str, extract_u64)
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 // The following code is part of the plugin interface. Do not remove it.

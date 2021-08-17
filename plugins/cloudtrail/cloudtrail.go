@@ -43,6 +43,7 @@ const (
 	PluginRequiredApiVersion = "1.0.0"
 	PluginID          uint32 = 2
 	PluginName               = "cloudtrail"
+	PluginFilterName         = "ct"
 	PluginDescription        = "reads cloudtrail JSON data saved to file in the directory specified in the settings"
 	PluginContact            = "github.com/leogr/plugins/"
 	PluginVersion = "0.0.1"
@@ -163,6 +164,11 @@ func plugin_get_id() uint32 {
 //export plugin_get_name
 func plugin_get_name() *C.char {
 	return C.CString(PluginName)
+}
+
+//export plugin_get_filter_name
+func plugin_get_filter_name() *C.char {
+	return C.CString(PluginFilterName)
 }
 
 //export plugin_get_version
@@ -869,12 +875,15 @@ func plugin_event_to_string(plgState unsafe.Pointer, data *C.char, datalen uint3
 	return C.CString(line)
 }
 
-func extract_str(pluginState unsafe.Pointer, evtnum uint64, field string, arg string, data []byte) (bool, string) {
+func extract_str(pluginState unsafe.Pointer, evtnum uint64, data []byte, ts uint64, field string, arg string) (bool, string) {
 	var err error
 	pCtx := (*pluginContext)(sinsp.Context(pluginState))
 
 	// Decode the json, but only if we haven't done it yet for this event
 	if evtnum != pCtx.jdataEvtnum {
+
+		// Maybe temp--remove trailing null bytes from string
+		data = bytes.Trim(data, "\x00")
 
 		// For this plugin, events are always strings
 		evtStr := string(data)
@@ -890,12 +899,7 @@ func extract_str(pluginState unsafe.Pointer, evtnum uint64, field string, arg st
 	return getfieldStr(pCtx.jdata, field)
 }
 
-//export plugin_extract_str
-func plugin_extract_str(plgState unsafe.Pointer, evtnum uint64, field *C.char, arg *C.char, data *C.uint8_t, datalen uint32) *C.char {
-	return (*C.char)(sinsp.WrapExtractStr(plgState, evtnum, unsafe.Pointer(field), unsafe.Pointer(arg), unsafe.Pointer(data), datalen, extract_str))
-}
-
-func extract_u64(pluginState unsafe.Pointer, evtnum uint64, field string, arg string, data []byte) (bool, uint64) {
+func extract_u64(pluginState unsafe.Pointer, evtnum uint64, data []byte, ts uint64, field string, arg string) (bool, uint64) {
 	var err error
 	pCtx := (*pluginContext)(sinsp.Context(pluginState))
 
@@ -916,9 +920,9 @@ func extract_u64(pluginState unsafe.Pointer, evtnum uint64, field string, arg st
 	return getfieldU64(pCtx.jdata, field)
 }
 
-//export plugin_extract_u64
-func plugin_extract_u64(plgState unsafe.Pointer, evtnum uint64, field *C.char, arg *C.char, data *C.uint8_t, datalen uint32, fieldPresent *uint32) uint64 {
-	return sinsp.WrapExtractU64(plgState, evtnum, unsafe.Pointer(field), unsafe.Pointer(arg), unsafe.Pointer(data), datalen, fieldPresent, extract_u64)
+//export plugin_extract_fields
+func plugin_extract_fields(plgState unsafe.Pointer, evt *C.struct_ss_plugin_event, numFields uint32, fields *C.struct_ss_plugin_extract_field) int32 {
+	return sinsp.WrapExtractFuncs(plgState, unsafe.Pointer(evt), numFields, unsafe.Pointer(fields), extract_str, extract_u64)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
