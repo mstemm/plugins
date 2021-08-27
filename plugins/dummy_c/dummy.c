@@ -14,12 +14,12 @@ struct dummy_plugin_info_2 {
 
 static const char *pl_required_api_version = "1.0.0";
 static uint32_t    pl_type                 = TYPE_SOURCE_PLUGIN;
-static uint32_t    pl_id                   = 222;
+static uint32_t    pl_id                   = 4;
 static const char *pl_name                 = "dummy_c";
 static const char *pl_desc                 = "do almost nothing, c-style";
 static const char *pl_contact              = "github.com/mstemm/plugins";
 static const char *pl_version              = "0.0.1";
-static const char *pl_event_source         = "dummy_event";
+static const char *pl_event_source         = "dummy";
 static const char *pl_fields               = "[{\"type\":\"uint64\", \"name\":\"dummy.count\", \"desc\":\"TBD\"}]";
 static const char *pl_evt_prefix           = "dummy";
 
