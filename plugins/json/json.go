@@ -113,8 +113,10 @@ func plugin_get_fields() *C.char {
 	flds := []sinsp.FieldEntry{
 		{Type: "string", Name: "json.value", ArgRequired: true, Desc: "allows to extract a value from a JSON-encoded input. Syntax is jevt.value[/x/y/z], where x,y and z are levels in the JSON hierarchy."},
 		{Type: "string", Name: "json.obj", Desc: "the full json message as a text string."},
+		{Type: "string", Name: "json.rawtime", Desc: "the time of the event, identical to evt.rawtime."},
 		{Type: "string", Name: "jevt.value", ArgRequired: true, Desc: "alias for json.value, provided for backwards compatibility"},
 		{Type: "string", Name: "jevt.obj", Desc: "alias for json.obj, provided for backwards compatibility"},
+		{Type: "string", Name: "jevt.rawtime", Desc: "alias for json.rawtime, provided for backwards compatibility"},
 	}
 
 	b, err := json.Marshal(&flds)
@@ -152,6 +154,8 @@ func extract_str(pluginState unsafe.Pointer, evtnum uint64, data []byte, ts uint
 	}
 
 	switch field {
+	case "json.rawtime", "jevt.rawtime":
+		return true, string(ts)
 	case "json.value", "jevt.value":
 		if arg[0] == '/' {
 			arg = arg[1:]
