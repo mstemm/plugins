@@ -19,7 +19,9 @@ import (
 	"strings"
 	"unsafe"
 
-	"github.com/mstemm/libsinsp-plugin-sdk-go/pkg/sinsp"
+	"github.com/falcosecurity/plugin-sdk-go"
+	"github.com/falcosecurity/plugin-sdk-go/state"
+	"github.com/falcosecurity/plugin-sdk-go/wrappers"
 	"github.com/valyala/fastjson"
 )
 
@@ -49,7 +51,7 @@ func plugin_get_required_api_version() *C.char {
 
 //export plugin_get_type
 func plugin_get_type() uint32 {
-	return sinsp.TypeExtractorPlugin
+	return sdk.TypeExtractorPlugin
 }
 
 //export plugin_init
@@ -62,19 +64,19 @@ func plugin_init(config *C.char, rc *int32) unsafe.Pointer {
 	log.Printf("config string:\n%s\n", C.GoString(config))
 
 	// Allocate the container for buffers and context
-	pluginState := sinsp.NewStateContainer()
+	pluginState := state.NewStateContainer()
 
 	// Allocate the context struct and set it to the state
 	pCtx := &pluginContext{}
-	sinsp.SetContext(pluginState, unsafe.Pointer(pCtx))
+	state.SetContext(pluginState, unsafe.Pointer(pCtx))
 
-	*rc = sinsp.ScapSuccess
+	*rc = sdk.SSPluginSuccess
 	return pluginState
 }
 
 //export plugin_get_last_error
 func plugin_get_last_error(plgState unsafe.Pointer) *C.char {
-	pCtx := (*pluginContext)(sinsp.Context(plgState))
+	pCtx := (*pluginContext)(state.Context(plgState))
 	if pCtx.lastError != nil {
 		return C.CString(pCtx.lastError.Error())
 	}
@@ -85,7 +87,7 @@ func plugin_get_last_error(plgState unsafe.Pointer) *C.char {
 //export plugin_destroy
 func plugin_destroy(plgState unsafe.Pointer) {
 	log.Printf("[%s] plugin_destroy\n", PluginName)
-	sinsp.Free(plgState)
+	state.Free(plgState)
 }
 
 //export plugin_get_name
@@ -110,7 +112,7 @@ func plugin_get_contact() *C.char {
 
 //export plugin_get_fields
 func plugin_get_fields() *C.char {
-	flds := []sinsp.FieldEntry{
+	flds := []sdk.FieldEntry{
 		{Type: "string", Name: "json.value", ArgRequired: true, Desc: "allows to extract a value from a JSON-encoded input. Syntax is jevt.value[/x/y/z], where x,y and z are levels in the JSON hierarchy."},
 		{Type: "string", Name: "json.obj", Desc: "the full json message as a text string."},
 		{Type: "string", Name: "json.rawtime", Desc: "the time of the event, identical to evt.rawtime."},
@@ -131,7 +133,7 @@ func plugin_get_fields() *C.char {
 func extract_str(pluginState unsafe.Pointer, evtnum uint64, data []byte, ts uint64, field string, arg string) (bool, string) {
 	var res string
 	var err error
-	pCtx := (*pluginContext)(sinsp.Context(pluginState))
+	pCtx := (*pluginContext)(state.Context(pluginState))
 
 	// As a very quick sanity check, only try to extract all if
 	// the first character is '{' or '['
@@ -188,7 +190,7 @@ func extract_u64(pluginState unsafe.Pointer, evtnum uint64, data []byte, ts uint
 
 //export plugin_extract_fields
 func plugin_extract_fields(plgState unsafe.Pointer, evt *C.struct_ss_plugin_event, numFields uint32, fields *C.struct_ss_plugin_extract_field) int32 {
-	return sinsp.WrapExtractFuncs(plgState, unsafe.Pointer(evt), numFields, unsafe.Pointer(fields), extract_str, extract_u64)
+	return wrappers.WrapExtractFuncs(plgState, unsafe.Pointer(evt), numFields, unsafe.Pointer(fields), extract_str, extract_u64)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -197,7 +199,7 @@ func plugin_extract_fields(plgState unsafe.Pointer, evt *C.struct_ss_plugin_even
 
 //export plugin_register_async_extractor
 func plugin_register_async_extractor(pluginState unsafe.Pointer, asyncExtractorInfo unsafe.Pointer) int32 {
-	return sinsp.RegisterAsyncExtractors(pluginState, asyncExtractorInfo, extract_str, nil)
+	return wrappers.RegisterAsyncExtractors(pluginState, asyncExtractorInfo, extract_str, nil)
 }
 
 func main() {

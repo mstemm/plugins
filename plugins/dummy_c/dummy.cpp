@@ -7,7 +7,6 @@
 
 #include <nlohmann/json.hpp>
 
-#include <scap.h>
 #include <plugin_info.h>
 
 using json = nlohmann::json;
@@ -168,7 +167,7 @@ ss_plugin_t* plugin_init(char* config, int32_t* rc)
 	ret->last_error = "";
 	ret->jitter = *it;
 
-	*rc = SCAP_SUCCESS;
+	*rc = SS_PLUGIN_SUCCESS;
 
 	return ret;
 }
@@ -198,7 +197,7 @@ ss_instance_t* plugin_open(ss_plugin_t* s, char* params, int32_t* rc)
 	catch (std::exception &e)
 	{
 		ps->last_error = std::string("Params ") + params + " could not be parsed: " + e.what();
-		*rc = SCAP_FAILURE;
+		*rc = SS_PLUGIN_FAILURE;
 		return NULL;
 	}
 
@@ -206,7 +205,7 @@ ss_instance_t* plugin_open(ss_plugin_t* s, char* params, int32_t* rc)
 	if(start_it == obj.end())
 	{
 		ps->last_error = std::string("Params ") + params + " did not contain start property";
-		*rc = SCAP_FAILURE;
+		*rc = SS_PLUGIN_FAILURE;
 		return NULL;
 	}
 
@@ -214,7 +213,7 @@ ss_instance_t* plugin_open(ss_plugin_t* s, char* params, int32_t* rc)
 	if(max_events_it == obj.end())
 	{
 		ps->last_error = std::string("Params ") + params + " did not contain maxEvents property";
-		*rc = SCAP_FAILURE;
+		*rc = SS_PLUGIN_FAILURE;
 		return NULL;
 	}
 
@@ -226,7 +225,7 @@ ss_instance_t* plugin_open(ss_plugin_t* s, char* params, int32_t* rc)
 	ret->max_events = *max_events_it;
 	ret->sample = *start_it;
 
-	*rc = SCAP_SUCCESS;
+	*rc = SS_PLUGIN_SUCCESS;
 
 	return ret;
 }
@@ -253,7 +252,7 @@ int32_t plugin_next(ss_plugin_t* s, ss_instance_t* i, ss_plugin_event **evt)
 
 	if(istate->counter > istate->max_events)
 	{
-		return SCAP_EOF;
+		return SS_PLUGIN_EOF;
 	}
 
 	// Increment sample by 1, also add a jitter of [0:jitter]
@@ -273,7 +272,7 @@ int32_t plugin_next(ss_plugin_t* s, ss_instance_t* i, ss_plugin_event **evt)
 
 	*evt = ret;
 
-	return SCAP_SUCCESS;
+	return SS_PLUGIN_SUCCESS;
 }
 
 // This plugin does not implement plugin_next_batch, due to the lower
@@ -337,5 +336,5 @@ int32_t plugin_extract_fields(ss_plugin_t *s, const ss_plugin_event *evt, uint32
 		}
 	}
 
-	return SCAP_SUCCESS;
+	return SS_PLUGIN_SUCCESS;
 }

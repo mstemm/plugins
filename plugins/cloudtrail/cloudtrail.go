@@ -34,7 +34,9 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
-	"github.com/mstemm/libsinsp-plugin-sdk-go/pkg/sinsp"
+	"github.com/falcosecurity/plugin-sdk-go"
+	"github.com/falcosecurity/plugin-sdk-go/state"
+	"github.com/falcosecurity/plugin-sdk-go/wrappers"
 	"github.com/valyala/fastjson"
 )
 
@@ -115,7 +117,7 @@ func plugin_get_required_api_version() *C.char {
 
 //export plugin_get_type
 func plugin_get_type() uint32 {
-	return sinsp.TypeSourcePlugin
+	return sdk.TypeSourcePlugin
 }
 
 //export plugin_init
@@ -128,21 +130,21 @@ func plugin_init(config *C.char, rc *int32) unsafe.Pointer {
 	log.Printf("config string:\n%s\n", C.GoString(config))
 
 	// Allocate the container for buffers and context
-	pluginState := sinsp.NewStateContainer()
+	pluginState := state.NewStateContainer()
 
 	// Allocate the context struct attach it to the state
 	pCtx := &pluginContext{
 		jdataEvtnum: math.MaxUint64,
 	}
-	sinsp.SetContext(pluginState, unsafe.Pointer(pCtx))
+	state.SetContext(pluginState, unsafe.Pointer(pCtx))
 
-	*rc = sinsp.ScapSuccess
+	*rc = sdk.SSPluginSuccess
 	return pluginState
 }
 
 //export plugin_get_last_error
 func plugin_get_last_error(plgState unsafe.Pointer) *C.char {
-	pCtx := (*pluginContext)(sinsp.Context(plgState))
+	pCtx := (*pluginContext)(state.Context(plgState))
 	if pCtx.lastError != nil {
 		return C.CString(pCtx.lastError.Error())
 	}
@@ -153,7 +155,7 @@ func plugin_get_last_error(plgState unsafe.Pointer) *C.char {
 //export plugin_destroy
 func plugin_destroy(plgState unsafe.Pointer) {
 	log.Printf("[%s] plugin_destroy\n", PluginName)
-	sinsp.Free(plgState)
+	state.Free(plgState)
 }
 
 //export plugin_get_id
@@ -193,7 +195,7 @@ func plugin_get_event_source() *C.char {
 
 //export plugin_get_fields
 func plugin_get_fields() *C.char {
-	flds := []sinsp.FieldEntry{
+	flds := []sdk.FieldEntry{
 		{Type: "string", Name: "ct.id", Display: "Event ID", Desc: "the unique ID of the cloudtrail event (eventID in the json)."},
 		{Type: "string", Name: "ct.time", Display: "Timestamp", Desc: "the timestamp of the cloudtrail event (eventTime in the json).", Properties: "hidden"},
 		{Type: "string", Name: "ct.src", Display: "AWS Service", Desc: "the source of the cloudtrail event (eventSource in the json, without the '.amazonaws.com' trailer)."},
@@ -235,7 +237,7 @@ func dirExists(path string) bool {
 }
 
 func openLocal(pCtx *pluginContext, oCtx *openContext, params *C.char, rc *int32) {
-	*rc = sinsp.ScapFailure
+	*rc = sdk.SSPluginFailure
 
 	oCtx.isDataFromS3 = false
 
@@ -276,11 +278,11 @@ func openLocal(pCtx *pluginContext, oCtx *openContext, params *C.char, rc *int32
 	}
 
 	log.Printf("[%s] found %d json files\n", PluginName, len(oCtx.files))
-	*rc = sinsp.ScapSuccess
+	*rc = sdk.SSPluginSuccess
 }
 
 func openS3(pCtx *pluginContext, oCtx *openContext, params *C.char, rc *int32) {
-	*rc = sinsp.ScapFailure
+	*rc = sdk.SSPluginFailure
 	input := C.GoString(params)
 
 	oCtx.isDataFromS3 = true
@@ -325,17 +327,17 @@ func openS3(pCtx *pluginContext, oCtx *openContext, params *C.char, rc *int32) {
 	})
 	if err != nil {
 		pCtx.lastError = fmt.Errorf(PluginName + " plugin error: failed to list objects: " + err.Error())
-		*rc = sinsp.ScapFailure
+		*rc = sdk.SSPluginFailure
 		return
 	}
 
 	oCtx.s3.downloader = s3manager.NewDownloader(oCtx.s3.awsSess)
-	*rc = sinsp.ScapSuccess
+	*rc = sdk.SSPluginSuccess
 }
 
 //export plugin_open
 func plugin_open(plgState unsafe.Pointer, params *C.char, rc *int32) unsafe.Pointer {
-	pCtx := (*pluginContext)(sinsp.Context(plgState))
+	pCtx := (*pluginContext)(state.Context(plgState))
 
 	// Allocate the context struct for this open instance
 	oCtx := &openContext{}
@@ -348,12 +350,12 @@ func plugin_open(plgState unsafe.Pointer, params *C.char, rc *int32) unsafe.Poin
 		openLocal(pCtx, oCtx, params, rc)
 	}
 
-	if *rc != sinsp.ScapSuccess {
+	if *rc != sdk.SSPluginSuccess {
 		return nil
 	}
 
 	// Allocate the library-compatible container for the open context
-	openState := sinsp.NewStateContainer()
+	openState := state.NewStateContainer()
 
 	// Create an array of download buffers that will be used to concurrently
 	// download files from s3
@@ -361,7 +363,7 @@ func plugin_open(plgState unsafe.Pointer, params *C.char, rc *int32) unsafe.Poin
 
 	// Tie the just created state to the open context
 	//
-	sinsp.SetContext(openState, unsafe.Pointer(oCtx))
+	state.SetContext(openState, unsafe.Pointer(oCtx))
 
 	// Allocate buffer for next()
 	return openState
@@ -370,7 +372,7 @@ func plugin_open(plgState unsafe.Pointer, params *C.char, rc *int32) unsafe.Poin
 //export plugin_close
 func plugin_close(plgState unsafe.Pointer, openState unsafe.Pointer) {
 	if openState != nil {
-		sinsp.Free(openState)
+		state.Free(openState)
 	}
 }
 
@@ -448,20 +450,20 @@ func extractRecordStrings(jsonStr []byte, res *[][]byte) {
 }
 
 // Next is the core event production function. It is called by both plugin_next() and plugin_next_batch()
-func Next(plgState unsafe.Pointer, openState unsafe.Pointer) (*sinsp.PluginEvent, int32) {
+func Next(plgState unsafe.Pointer, openState unsafe.Pointer) (*sdk.PluginEvent, int32) {
 	var tmpStr []byte
 	var err error
 
-	pCtx := (*pluginContext)(sinsp.Context(plgState))
-	oCtx := (*openContext)(sinsp.Context(openState))
+	pCtx := (*pluginContext)(state.Context(plgState))
+	oCtx := (*openContext)(state.Context(openState))
 
-	ret := sinsp.PluginEvent{}
+	ret := sdk.PluginEvent{}
 
 	// Only open the next file once we're sure that the content of the previous one has been full consumed
 	if oCtx.evtJSONListPos == len(oCtx.evtJSONStrings) {
 		// Open the next file and bring its content into memeory
 		if oCtx.curFileNum >= uint32(len(oCtx.files)) {
-			return nil, sinsp.ScapEOF
+			return nil, sdk.SSPluginEOF
 		}
 
 		file := oCtx.files[oCtx.curFileNum]
@@ -474,7 +476,7 @@ func Next(plgState unsafe.Pointer, openState unsafe.Pointer) (*sinsp.PluginEvent
 		}
 		if err != nil {
 			pCtx.lastError = err
-			return nil, sinsp.ScapFailure
+			return nil, sdk.SSPluginFailure
 		}
 
 		// The file can be gzipped. If it is, we unzip it.
@@ -483,7 +485,7 @@ func Next(plgState unsafe.Pointer, openState unsafe.Pointer) (*sinsp.PluginEvent
 			defer gr.Close()
 			zdata, err := ioutil.ReadAll(gr)
 			if err != nil {
-				return nil, sinsp.ScapTimeout
+				return nil, sdk.SSPluginTimeout
 			}
 			tmpStr = zdata
 		}
@@ -512,14 +514,14 @@ func Next(plgState unsafe.Pointer, openState unsafe.Pointer) (*sinsp.PluginEvent
 		if err != nil {
 			// Not json? Just skip this event.
 			oCtx.evtJSONListPos++
-			return nil, sinsp.ScapTimeout
+			return nil, sdk.SSPluginTimeout
 		}
 
 		oCtx.evtJSONListPos++
 	} else {
 		// Json not int the expected format. Just skip this event.
 		oCtx.evtJSONListPos++
-		return nil, sinsp.ScapTimeout
+		return nil, sdk.SSPluginTimeout
 	}
 
 	// Extract the timestamp
@@ -530,29 +532,29 @@ func Next(plgState unsafe.Pointer, openState unsafe.Pointer) (*sinsp.PluginEvent
 		//
 		// We assume this is just some spurious data and we continue
 		//
-		return nil, sinsp.ScapTimeout
+		return nil, sdk.SSPluginTimeout
 	}
 	ret.Timestamp = uint64(t1.Unix()) * 1000000000
 
 	ets := string(cr.GetStringBytes("eventType"))
 	if ets == "AwsCloudTrailInsight" {
-		return nil, sinsp.ScapTimeout
+		return nil, sdk.SSPluginTimeout
 	}
 
 	// Make sure the event is not too big for the engine
-	if len(ret.Data) > int(sinsp.MaxEvtSize) {
-		pCtx.lastError = fmt.Errorf("cloudwatch message too long: %d, max %d supported", len(ret.Data), sinsp.MaxEvtSize)
-		return nil, sinsp.ScapFailure
+	if len(ret.Data) > int(sdk.MaxEvtSize) {
+		pCtx.lastError = fmt.Errorf("cloudwatch message too long: %d, max %d supported", len(ret.Data), sdk.MaxEvtSize)
+		return nil, sdk.SSPluginFailure
 	}
 
-	return &ret, sinsp.ScapSuccess
+	return &ret, sdk.SSPluginSuccess
 }
 
 //export plugin_next
 func plugin_next(plgState unsafe.Pointer, openState unsafe.Pointer, retEvt **C.ss_plugin_event) int32 {
 	evt, res := Next(plgState, openState)
-	if res == sinsp.ScapSuccess {
-		*retEvt = (*C.ss_plugin_event)(sinsp.Events([]*sinsp.PluginEvent{evt}))
+	if res == sdk.SSPluginSuccess {
+		*retEvt = (*C.ss_plugin_event)(wrappers.Events([]*sdk.PluginEvent{evt}))
 	}
 
 	log.Printf("[%s] plugin_next\n", PluginName)
@@ -562,8 +564,7 @@ func plugin_next(plgState unsafe.Pointer, openState unsafe.Pointer, retEvt **C.s
 
 //export plugin_get_progress
 func plugin_get_progress(plgState unsafe.Pointer, openState unsafe.Pointer, progress_pct *uint32) *C.char {
-	//pCtx := (*pluginContext)(sinsp.Context(plgState))
-	oCtx := (*openContext)(sinsp.Context(openState))
+	oCtx := (*openContext)(state.Context(openState))
 
 	var pd float64 = float64(oCtx.curFileNum) * 100 / float64(len(oCtx.files))
 	*progress_pct = oCtx.curFileNum * 10000 / uint32(len(oCtx.files))
@@ -840,7 +841,7 @@ func plugin_event_to_string(plgState unsafe.Pointer, data *C.char, datalen uint3
 	var user string
 	var err error
 
-	pCtx := (*pluginContext)(sinsp.Context(plgState))
+	pCtx := (*pluginContext)(state.Context(plgState))
 
 	pCtx.jdata, err = pCtx.jparser.Parse(C.GoStringN(data, C.int(datalen)))
 	if err != nil {
@@ -877,7 +878,7 @@ func plugin_event_to_string(plgState unsafe.Pointer, data *C.char, datalen uint3
 
 func extract_str(pluginState unsafe.Pointer, evtnum uint64, data []byte, ts uint64, field string, arg string) (bool, string) {
 	var err error
-	pCtx := (*pluginContext)(sinsp.Context(pluginState))
+	pCtx := (*pluginContext)(state.Context(pluginState))
 
 	// Decode the json, but only if we haven't done it yet for this event
 	if evtnum != pCtx.jdataEvtnum {
@@ -901,7 +902,7 @@ func extract_str(pluginState unsafe.Pointer, evtnum uint64, data []byte, ts uint
 
 func extract_u64(pluginState unsafe.Pointer, evtnum uint64, data []byte, ts uint64, field string, arg string) (bool, uint64) {
 	var err error
-	pCtx := (*pluginContext)(sinsp.Context(pluginState))
+	pCtx := (*pluginContext)(state.Context(pluginState))
 
 	// Decode the json, but only if we haven't done it yet for this event
 	if evtnum != pCtx.jdataEvtnum {
@@ -921,8 +922,9 @@ func extract_u64(pluginState unsafe.Pointer, evtnum uint64, data []byte, ts uint
 }
 
 //export plugin_extract_fields
-func plugin_extract_fields(plgState unsafe.Pointer, evt *C.struct_ss_plugin_event, numFields uint32, fields *C.struct_ss_plugin_extract_field) int32 {
-	return sinsp.WrapExtractFuncs(plgState, unsafe.Pointer(evt), numFields, unsafe.Pointer(fields), extract_str, extract_u64)
+func plugin_extract_fields(plgState unsafe.Pointer, evt *C.ss_plugin_event, numFields uint32, fields *C.ss_plugin_extract_field) int32 {
+	log.Printf("[%s] plugin_extract_fields\n", PluginName)
+	return wrappers.WrapExtractFuncs(plgState, unsafe.Pointer(evt), numFields, unsafe.Pointer(fields), extract_str, extract_u64)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -931,15 +933,15 @@ func plugin_extract_fields(plgState unsafe.Pointer, evt *C.struct_ss_plugin_even
 
 //export plugin_register_async_extractor
 func plugin_register_async_extractor(pluginState unsafe.Pointer, asyncExtractorInfo unsafe.Pointer) int32 {
-	return sinsp.RegisterAsyncExtractors(pluginState, asyncExtractorInfo, extract_str, extract_u64)
+	return wrappers.RegisterAsyncExtractors(pluginState, asyncExtractorInfo, extract_str, extract_u64)
 }
 
 //export plugin_next_batch
 func plugin_next_batch(plgState unsafe.Pointer, openState unsafe.Pointer, nevts *uint32, retEvts **C.ss_plugin_event) int32 {
-	evts, res := sinsp.NextBatch(plgState, openState, Next)
+	evts, res := wrappers.NextBatch(plgState, openState, Next)
 
-	if res == sinsp.ScapSuccess {
-		*retEvts = (*C.ss_plugin_event)(sinsp.Events(evts))
+	if res == sdk.SSPluginSuccess {
+		*retEvts = (*C.ss_plugin_event)(wrappers.Events(evts))
 		*nevts = (uint32)(len(evts))
 	}
 
