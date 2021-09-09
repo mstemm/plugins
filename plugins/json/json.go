@@ -4,7 +4,7 @@
 ///////////////////////////////////////////////////////////////////////////////
 package main
 
-// #cgo CFLAGS: -I${SRCDIR}/../../../libs/userspace/libscap
+// #cgo CFLAGS: -I${SRCDIR}/../../
 /*
 #include <stdlib.h>
 #include <inttypes.h>

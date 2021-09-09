@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include <nlohmann/json.hpp>
+#include "nlohmann/json.hpp"
 
 #include <plugin_info.h>
 
